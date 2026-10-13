@@ -5,14 +5,14 @@ const authMessage=document.getElementById('auth-message');
 function showAuthMessage(message){authMessage.textContent=message;}
 function cloudValid(v){return v&&Array.isArray(v.entries)&&Array.isArray(v.memories)&&v.entries.every(e=>e&&typeof e.id==='string'&&typeof e.date==='string'&&typeof e.text==='string')&&v.memories.every(m=>m&&typeof m.id==='string'&&typeof m.text==='string'&&v.entries.some(e=>e.id===m.entryId));}
 function cloudControls(enabled){document.querySelectorAll('#entry-form button,#collect,#remove-memory,.delete,.danger').forEach(b=>b.disabled=!enabled);}
-function clearCloudView(){state={entries:[],memories:[]};ready=false;cloudRevision=null;cloudUser=null;page=0;journalPage=0;picking=null;viewing=null;for(const name of ['story','source','snippet','search'])$(name).value='';for(const d of document.querySelectorAll('dialog[open]'))d.close();render();cloudControls(false);$('active-profile').textContent='未登录';}
+function clearCloudView(){state={entries:[],memories:[]};ready=false;cloudRevision=null;cloudUser=null;page=0;journalPage=0;picking=null;viewing=null;for(const name of ['story','source','snippet','search'])$(name).value='';for(const d of document.querySelectorAll('dialog[open]'))d.close();render();cloudControls(false);$('active-profile').textContent='未登录';if(typeof syncAccountView==='function')syncAccountView();}
 async function loadCloudSession(){
  if(cloudLoading)return;cloudLoading=true;const epoch=++cloudEpoch;clearCloudView();
  try{const {data,error}=await cloudClient.auth.getUser();if(error||!data.user){if(!authDialog.open)authDialog.showModal();showAuthMessage(error?'请重新登录。':'登录后查看你的回忆树。');return;}
  const user=data.user;const result=await cloudClient.from('memory_trees').select('data,revision').eq('user_id',user.id).maybeSingle();
  if(epoch!==cloudEpoch)return;if(result.error)throw result.error;
  if(result.data&&!cloudValid(result.data.data))throw Error('记录格式异常，请先保留云端数据。');
- cloudUser=user;state=result.data?result.data.data:{entries:[],memories:[]};cloudRevision=result.data?result.data.revision:null;ready=true;render();cloudControls(true);$('active-profile').textContent='已登录：'+user.email+' · 云端记录';if(authDialog.open)authDialog.close();$('logout').hidden=false;
+ cloudUser=user;state=result.data?result.data.data:{entries:[],memories:[]};cloudRevision=result.data?result.data.revision:null;ready=true;render();cloudControls(true);$('active-profile').textContent='已登录：'+user.email+' · 云端记录';if(authDialog.open)authDialog.close();$('logout').hidden=false;if(typeof syncAccountView==='function')syncAccountView();
  }catch(error){showAuthMessage('云端记录加载失败，请稍后重试。');if(!authDialog.open)authDialog.showModal();}finally{cloudLoading=false;}
 }
 async function cloudSave(next){
@@ -54,7 +54,7 @@ async function verifyCode(){
  try{const {data,error}=await cloudClient.auth.verifyOtp({email:sentEmail,token,type:'email'});if(error)throw error;if(!data.session)throw Error('missing session');resetOtp();await loadCloudSession();}
  catch(error){showAuthMessage(otpError(error));}finally{otpBusy=false;$('verify-code').disabled=false;$('change-email').disabled=false;updateResend();}
 }
-$('auth-form').addEventListener('submit',e=>{e.preventDefault();sendOtp()});$('otp-form').addEventListener('submit',e=>{e.preventDefault();verifyCode()});$('resend-code').addEventListener('click',sendOtp);$('change-email').addEventListener('click',()=>{resetOtp();showAuthMessage('重新填写邮箱后发送验证码。');});$('open-account').addEventListener('click',()=>{showAuthMessage(cloudUser?'当前已登录，可以退出后切换账号。':'用邮箱验证码进入，无需密码。');$('auth-form').hidden=Boolean(cloudUser);if(cloudUser)$('otp-step').hidden=true;authDialog.showModal()});
+$('auth-form').addEventListener('submit',e=>{e.preventDefault();sendOtp()});$('otp-form').addEventListener('submit',e=>{e.preventDefault();verifyCode()});$('resend-code').addEventListener('click',sendOtp);$('change-email').addEventListener('click',()=>{resetOtp();showAuthMessage('重新填写邮箱后发送验证码。');});$('open-account').addEventListener('click',()=>{if(cloudUser){openAccount();return;}showAuthMessage(cloudUser?'当前已登录，可以退出后切换账号。':'用邮箱验证码进入，无需密码。');$('auth-form').hidden=Boolean(cloudUser);if(cloudUser)$('otp-step').hidden=true;authDialog.showModal()});
 $('logout').addEventListener('click',async()=>{if(!cloudClient||cloudBusy)return;const {error}=await cloudClient.auth.signOut();if(error){showAuthMessage('退出失败，请稍后重试。');return;}cloudEpoch++;clearCloudView();resetOtp();$('auth-form').hidden=false;$('logout').hidden=true;showAuthMessage('已退出登录。');authDialog.showModal()});
 $('retry-cloud').addEventListener('click',()=>cloudClient?loadCloudSession():showAuthMessage('账号服务尚未配置。'));
 async function initCloud(){clearCloudView();const c=window.MEMORY_CLOUD_CONFIG;
